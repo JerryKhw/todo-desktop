@@ -27,6 +27,7 @@ dependencies:
 
   # Widget
   flutter_svg: ^2.1.0
+  flutter_quill: ^11.4.1
 
   # Model
   freezed_annotation: ^3.0.0 
@@ -34,7 +35,7 @@ dependencies:
 
   # DB
   sembast: ^3.8.5+1
-  
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

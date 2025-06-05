@@ -8,7 +8,6 @@ part 'note.g.dart';
 abstract class Note with _$Note {
   const factory Note({
     required bool check,
-    required bool line,
     required double width,
     required double height,
     NoteOffset? offset,

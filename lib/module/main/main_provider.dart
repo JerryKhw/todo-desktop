@@ -1,4 +1,8 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:sembast/sembast_io.dart';
@@ -15,12 +19,6 @@ class CurrentNote extends _$CurrentNote {
 
   Future<void> toggleCheck() async {
     final tmp = state.copyWith(check: !state.check);
-    await updateNote(ref, tmp);
-    state = tmp;
-  }
-
-  Future<void> toggleLine() async {
-    final tmp = state.copyWith(line: !state.line);
     await updateNote(ref, tmp);
     state = tmp;
   }
@@ -52,39 +50,70 @@ class CurrentNote extends _$CurrentNote {
       WindowManagerPlus.current.destroy();
     }
   }
+
+  Future<void> updateItems(List<NoteItem> value) async {
+    final tmp = state.copyWith(items: value);
+    await updateNote(ref, tmp);
+    state = tmp;
+  }
+}
+
+@Riverpod(keepAlive: true)
+class CurrentController extends _$CurrentController {
+  @override
+  QuillController build() => ref.read(itemsProvider).first.$2;
+
+  void update(QuillController value) => state = value;
+}
+
+@Riverpod(keepAlive: true)
+class DebounceTimer extends _$DebounceTimer {
+  @override
+  Timer? build() => null;
+
+  void update(Timer value) {
+    state?.cancel();
+    state = value;
+  }
 }
 
 @Riverpod(keepAlive: true)
 class Items extends _$Items {
   @override
-  List<(NoteItem, TextEditingController, FocusNode)> build() =>
+  List<(NoteItem, QuillController, FocusNode)> build() =>
       ref
           .read(noteProvider)
           .items
           .map(
             (item) => (
               item,
-              TextEditingController(text: item.text),
+              QuillController(
+                document: Document.fromJson(jsonDecode(item.text)),
+                selection: const TextSelection.collapsed(offset: 0),
+              ),
               FocusNode(),
             ),
           )
           .toList();
 
   Future<void> onChanged(int index, String value) async {
-    final item = state.elementAt(index);
+    ref
+        .read(debounceTimerProvider.notifier)
+        .update(
+          Timer(const Duration(milliseconds: 200), () async {
+            final item = state.elementAt(index);
 
-    final tmp = [...state];
+            final tmp = [...state];
 
-    tmp[index] = (item.$1.copyWith(text: value), item.$2, item.$3);
+            tmp[index] = (item.$1.copyWith(text: value), item.$2, item.$3);
 
-    final note = ref.read(currentNoteProvider);
+            await ref
+                .read(currentNoteProvider.notifier)
+                .updateItems(tmp.map((item) => item.$1).toList());
 
-    await updateNote(
-      ref,
-      note.copyWith(items: tmp.map((item) => item.$1).toList()),
-    );
-
-    state = tmp;
+            state = tmp;
+          }),
+        );
   }
 
   Future<void> toggle(int index) async {
@@ -95,12 +124,9 @@ class Items extends _$Items {
 
     tmp[index] = (item.$1.copyWith(checked: !data.checked), item.$2, item.$3);
 
-    final note = ref.read(currentNoteProvider);
-
-    await updateNote(
-      ref,
-      note.copyWith(items: tmp.map((item) => item.$1).toList()),
-    );
+    await ref
+        .read(currentNoteProvider.notifier)
+        .updateItems(tmp.map((item) => item.$1).toList());
 
     state = tmp;
   }
@@ -109,8 +135,8 @@ class Items extends _$Items {
     final tmp = [...state];
 
     final newItem = (
-      NoteItem(text: "", checked: false),
-      TextEditingController(),
+      NoteItem(text: jsonEncode(Document().toDelta().toJson()), checked: false),
+      QuillController.basic(),
       FocusNode(),
     );
 
@@ -121,18 +147,15 @@ class Items extends _$Items {
       tmp.insert(insertIndex, newItem);
     }
 
-    final note = ref.read(currentNoteProvider);
-
-    await updateNote(
-      ref,
-      note.copyWith(items: tmp.map((item) => item.$1).toList()),
-    );
+    await ref
+        .read(currentNoteProvider.notifier)
+        .updateItems(tmp.map((item) => item.$1).toList());
 
     state = tmp;
 
     await Future.delayed(Duration(milliseconds: 100));
     if (!context.mounted) return;
-    FocusScope.of(context).requestFocus(newItem.$3);
+    newItem.$3.requestFocus();
   }
 
   Future<void> delete(BuildContext context, int index) async {
@@ -140,26 +163,20 @@ class Items extends _$Items {
       return;
     }
 
+    final prevItem = state.elementAt(index - 1);
     final tmp = [...state];
 
     tmp.removeAt(index);
 
-    final note = ref.read(currentNoteProvider);
-
-    await updateNote(
-      ref,
-      note.copyWith(items: tmp.map((item) => item.$1).toList()),
-    );
+    await ref
+        .read(currentNoteProvider.notifier)
+        .updateItems(tmp.map((item) => item.$1).toList());
 
     state = tmp;
 
-    if (index - 1 > 0) {
-      final item = state.elementAt(index - 1);
-
-      await Future.delayed(Duration(milliseconds: 100));
-      if (!context.mounted) return;
-      FocusScope.of(context).requestFocus(item.$3);
-    }
+    await Future.delayed(Duration(milliseconds: 100));
+    if (!context.mounted) return;
+    prevItem.$3.requestFocus();
   }
 }
 

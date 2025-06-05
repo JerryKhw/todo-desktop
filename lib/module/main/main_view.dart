@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'dart:ui';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:todo_desktop/asset/index.dart';
@@ -83,7 +85,7 @@ class MainViewState extends ConsumerState<MainView> with WindowListener {
 }
 
 class MainItem extends HookConsumerWidget {
-  final (NoteItem, TextEditingController, FocusNode) item;
+  final (NoteItem, QuillController, FocusNode) item;
   final void Function(String) onChanged;
   final void Function() onToogle;
   final void Function() onAdd;
@@ -106,33 +108,21 @@ class MainItem extends HookConsumerWidget {
     final controller = item.$2;
     final focusNode = item.$3;
 
-    useEffect(() {
-      focusNode.onKeyEvent = (node, event) {
-        final isShiftPressed = HardwareKeyboard.instance.isShiftPressed;
-        if (event is KeyDownEvent) {
-          switch (event.logicalKey) {
-            case LogicalKeyboardKey.backspace:
-              if (controller.text.isEmpty) {
-                onDelete();
-                return KeyEventResult.handled;
-              }
-              break;
-            case LogicalKeyboardKey.enter:
-              if (!isShiftPressed) {
-                onAdd();
-                return KeyEventResult.handled;
-              }
-              break;
-            default:
-              break;
-          }
-        }
+    final listener = useState(() {
+      if (focusNode.hasFocus) {
+        ref.read(currentControllerProvider.notifier).update(controller);
+      }
+    });
 
-        return KeyEventResult.ignored;
-      };
+    useEffect(() {
+      controller.changes.listen((event) {
+        onChanged(jsonEncode(controller.document.toDelta().toJson()));
+      });
+
+      focusNode.addListener(listener.value);
 
       return () {
-        focusNode.onKeyEvent = null;
+        focusNode.removeListener(listener.value);
       };
     });
 
@@ -166,41 +156,81 @@ class MainItem extends HookConsumerWidget {
                 ),
               ),
             Expanded(
-              child: TextField(
+              child: QuillEditor.basic(
                 controller: controller,
                 focusNode: focusNode,
-                onChanged: onChanged,
-                decoration: InputDecoration(
-                  isDense: true,
-                  border: InputBorder.none,
-                  errorBorder: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  disabledBorder: InputBorder.none,
-                  focusedErrorBorder: InputBorder.none,
-                  hintText: "Text",
-                  hintStyle: TextStyle(
-                    fontFamily: 'NotoSansKR',
-                    fontWeight: FontWeight.w500,
-                    fontSize: 16,
-                    height: 22.toFigmaLineHeight(16),
-                    color: Color(0xFF443731).withValues(alpha: 0.3),
+                config: QuillEditorConfig(
+                  onKeyPressed: (event, node) {
+                    final isShiftPressed =
+                        HardwareKeyboard.instance.isShiftPressed;
+
+                    if (event is KeyDownEvent) {
+                      switch (event.logicalKey) {
+                        case LogicalKeyboardKey.backspace:
+                          if (controller.document
+                              .toPlainText()
+                              .trim()
+                              .isEmpty) {
+                            onDelete();
+                            return KeyEventResult.handled;
+                          }
+                          break;
+                        case LogicalKeyboardKey.enter:
+                          if (!isShiftPressed) {
+                            onAdd();
+                            return KeyEventResult.handled;
+                          }
+                          break;
+                        default:
+                          break;
+                      }
+                    }
+
+                    return KeyEventResult.ignored;
+                  },
+                  textSelectionThemeData: TextSelectionThemeData(
+                    cursorColor: Color(0xFF443731),
+                  ),
+                  placeholder: 'Please enter the contents.',
+                  customStyles: DefaultStyles(
+                    paragraph: DefaultTextBlockStyle(
+                      TextStyle(
+                        fontFamily: 'NotoSansKR',
+                        fontWeight: FontWeight.w500,
+                        fontSize: 16,
+                        height: 22.toFigmaLineHeight(16),
+                        color: Color(0xFF443731),
+                      ),
+                      HorizontalSpacing(0, 0),
+                      VerticalSpacing.zero,
+                      VerticalSpacing.zero,
+                      null,
+                    ),
+                    placeHolder: DefaultTextBlockStyle(
+                      TextStyle(
+                        fontFamily: 'NotoSansKR',
+                        fontWeight: FontWeight.w500,
+                        fontSize: 16,
+                        height: 22.toFigmaLineHeight(16),
+                        color: Color(0xFF443731).withValues(alpha: 0.3),
+                      ),
+                      HorizontalSpacing(0, 0),
+                      VerticalSpacing.zero,
+                      VerticalSpacing.zero,
+                      null,
+                    ),
+                    strikeThrough: TextStyle(
+                      fontFamily: 'NotoSansKR',
+                      fontWeight: FontWeight.w500,
+                      fontSize: 16,
+                      height: 22.toFigmaLineHeight(16),
+                      color: Color(0xFF443731),
+                      decoration: TextDecoration.lineThrough,
+                      decorationColor: Color(0xFF443731),
+                    ),
                   ),
                 ),
-                cursorColor: Color(0xFF443731),
-                maxLines: null,
-                style: TextStyle(
-                  fontFamily: 'NotoSansKR',
-                  fontWeight: FontWeight.w500,
-                  fontSize: 16,
-                  height: 22.toFigmaLineHeight(16),
-                  color: Color(0xFF443731),
-                  decoration:
-                      data.checked && note.line
-                          ? TextDecoration.lineThrough
-                          : null,
-                  decorationColor: Color(0xFF443731),
-                ),
+                // ),
               ),
             ),
           ],
@@ -216,6 +246,7 @@ class AppBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final note = ref.watch(currentNoteProvider);
+    final controller = ref.watch(currentControllerProvider);
 
     return GestureDetector(
       onTapDown: (_) => WindowManagerPlus.current.startDragging(),
@@ -235,9 +266,23 @@ class AppBar extends ConsumerWidget {
               note.check ? SvgImage.selectorCheckOn : SvgImage.selectorCheckOff,
             ),
             SizedBox(width: 10),
-            AppBarButton(
-              onTap: ref.read(currentNoteProvider.notifier).toggleLine,
-              note.line ? SvgImage.selectorLineOn : SvgImage.selectorLineOff,
+            QuillToolbarToggleStyleButton(
+              controller: controller,
+              attribute: Attribute.strikeThrough,
+              baseOptions: QuillToolbarBaseButtonOptions(
+                childBuilder: (optionsDynamic, extraOptionsDynamic) {
+                  final extraOptions =
+                      extraOptionsDynamic
+                          as QuillToolbarToggleStyleButtonExtraOptions;
+
+                  return AppBarButton(
+                    onTap: extraOptions.onPressed,
+                    extraOptions.isToggled
+                        ? SvgImage.selectorLineOn
+                        : SvgImage.selectorLineOff,
+                  );
+                },
+              ),
             ),
             const Spacer(),
             AppBarButton(
