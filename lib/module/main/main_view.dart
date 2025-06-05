@@ -108,10 +108,23 @@ class MainItem extends HookConsumerWidget {
 
     useEffect(() {
       focusNode.onKeyEvent = (node, event) {
-        if (event is KeyDownEvent &&
-            event.logicalKey == LogicalKeyboardKey.backspace) {
-          if (controller.text.isEmpty) {
-            onDelete();
+        final isShiftPressed = HardwareKeyboard.instance.isShiftPressed;
+        if (event is KeyDownEvent) {
+          switch (event.logicalKey) {
+            case LogicalKeyboardKey.backspace:
+              if (controller.text.isEmpty) {
+                onDelete();
+                return KeyEventResult.handled;
+              }
+              break;
+            case LogicalKeyboardKey.enter:
+              if (!isShiftPressed) {
+                onAdd();
+                return KeyEventResult.handled;
+              }
+              break;
+            default:
+              break;
           }
         }
 
@@ -156,13 +169,7 @@ class MainItem extends HookConsumerWidget {
               child: TextField(
                 controller: controller,
                 focusNode: focusNode,
-                textInputAction: TextInputAction.done,
                 onChanged: onChanged,
-                onSubmitted: (value) {
-                  if (value.isNotEmpty) {
-                    onAdd();
-                  }
-                },
                 decoration: InputDecoration(
                   isDense: true,
                   border: InputBorder.none,

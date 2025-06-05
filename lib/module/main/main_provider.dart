@@ -136,6 +136,10 @@ class Items extends _$Items {
   }
 
   Future<void> delete(BuildContext context, int index) async {
+    if (index == 0) {
+      return;
+    }
+
     final tmp = [...state];
 
     tmp.removeAt(index);
