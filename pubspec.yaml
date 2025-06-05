@@ -18,6 +18,7 @@ dependencies:
 
   # Native
   window_manager_plus: ^1.0.5 
+  velopack_flutter: ^0.1.0
 
   # Util
   talker_riverpod_logger: ^4.8.0

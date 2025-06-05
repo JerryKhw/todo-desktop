@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
@@ -9,9 +11,20 @@ import 'package:todo_desktop/module/main/main_view.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:todo_desktop/provider/app_provider.dart';
 import 'package:window_manager_plus/window_manager_plus.dart';
+import 'package:velopack_flutter/velopack_flutter.dart';
 
 void main(List<String> args) async {
-  print(args);
+  await RustLib.init();
+
+  final veloCommands = [
+    '--veloapp-install',
+    '--veloapp-updated',
+    '--veloapp-obsolete',
+    '--veloapp-uninstall',
+  ];
+  if (veloCommands.any((cmd) => args.contains(cmd))) {
+    exit(0);
+  }
 
   WidgetsFlutterBinding.ensureInitialized();
 
